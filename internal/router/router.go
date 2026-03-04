@@ -26,13 +26,14 @@ func (*Router) hundlerIndex(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		author := r.FormValue("author")
 		content := r.FormValue("content")
-		err := post.SavePost(author, content)
+		
+		err := post.SavePost(r.Context(), author, content)
 		if err != nil {
 			log.Println(err)
 		}
 
 	}
-	posts, err := post.GetPosts()
+	posts, err := post.GetPosts(r.Context())
 	if err != nil {
 		http.Error(w, "", http.StatusInternalServerError)
 		return

@@ -8,6 +8,6 @@ import (
 
 func main() {
 	router := router.NewRouter()
-	log.Println("Start ...")
+	log.Println("Server is running")
 	log.Fatal(http.ListenAndServe(":8080", router.SetRouter()))
 }

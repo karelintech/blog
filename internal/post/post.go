@@ -1,13 +1,14 @@
 package post
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
+	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 )
 
 type Post struct {
@@ -16,14 +17,14 @@ type Post struct {
 	CreatedAt string
 }
 
-func GetPosts() (posts []Post, err error) {
+func GetPosts(ctx context.Context) (posts []Post, err error) {
 	err = godotenv.Load()
 	if err != nil {
 		fmt.Printf("%v", err)
 		return
 	}
 
-	database, err := sql.Open("postgres", os.Getenv("credentials"))
+	database, err := sql.Open("pgx", os.Getenv("credentials"))
 	if err != nil {
 		fmt.Printf("%v", err)
 		return
@@ -35,7 +36,14 @@ func GetPosts() (posts []Post, err error) {
 		return
 	}
 
-	rows, err := database.Query("SELECT author, content, created_at FROM users ORDER BY created_at DESC;")
+	tx, err := database.Begin()
+	if err != nil {
+		fmt.Printf("%v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, "SELECT author, content, created_at FROM users ORDER BY created_at DESC;")
 	if err != nil {
 		fmt.Printf("%v", err)
 		return
@@ -44,20 +52,37 @@ func GetPosts() (posts []Post, err error) {
 
 	for rows.Next() {
 		var post Post
-		rows.Scan(&post.Author, &post.Content, &post.CreatedAt)
-		post.CreatedAt = post.CreatedAt[11:16] + " " +  post.CreatedAt[:10]
+		var rowTime string
+		err = rows.Scan(&post.Author, &post.Content, &rowTime)
+		if err != nil {
+            return nil, err
+        }
+
+		formatTime, err := time.Parse(time.RFC3339, rowTime)
+		if err != nil {
+			fmt.Print(err)
+            return nil, err
+        }
+		post.CreatedAt = formatTime.Format("15:04 02.01.2006")
 		posts = append(posts, post)
 	}
+
+	err = rows.Err()
+	if err != nil {
+        return nil, err
+    }
+
+	tx.Commit()
 	return
 }
 
-func SavePost(author, content string) error {
+func SavePost(ctx context.Context, author, content string) error {
 	err := godotenv.Load()
 	if err != nil {
 		return err
 	}
 
-	database, err := sql.Open("postgres", os.Getenv("credentials"))
+	database, err := sql.Open("pgx", os.Getenv("credentials"))
 	if err != nil {
 		return err
 	}
@@ -67,10 +92,16 @@ func SavePost(author, content string) error {
 		return err
 	}
 
-	querry := fmt.Sprintf("INSERT INTO users (author, content) VALUES ('%s', '%s');", author, content)
-	_, err = database.Exec(querry)
+	tx, err := database.Begin()
 	if err != nil {
-		log.Println(err)
+		return err
 	}
-	return nil
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO users (author, content) VALUES ($1, $2);", author, content)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	return tx.Commit()
 }
