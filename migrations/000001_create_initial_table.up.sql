@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS users(
+    id SERIAL NOT NULL PRIMARY KEY,
+    author VARCHAR(20) NOT NULL,
+    content TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
